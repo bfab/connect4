@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Connect Four P2P</title>
+<title>Connect Four P2P Short URL + Prompt</title>
 <style>
 body{font-family:sans-serif;text-align:center}
 #board{display:grid;grid-template-columns:repeat(7,60px);gap:5px;margin:20px auto}
@@ -12,20 +12,22 @@ body{font-family:sans-serif;text-align:center}
 .turn{font-weight:bold;font-size:1.2em}
 .turn.X{color:red}.turn.O{color:gold}
 button{padding:5px 10px;margin:5px;cursor:pointer}
+input#shortLink{width:80%;padding:5px;margin-top:5px;}
 </style>
 </head>
 <body>
-<h1>Connect Four (P2P)</h1>
+<h1>Connect Four (Serverless, Short URL)</h1>
 <p id="info"></p>
 <div id="board"></div>
 <button onclick="restartGame()">🔄 Restart Game</button>
 
 <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+
 <script>
 const ROWS=6,COLS=7;
 let state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
 const boardDiv=document.getElementById("board");
-
 for(let r=0;r<ROWS;r++){
   for(let c=0;c<COLS;c++){
     const cell=document.createElement("div");
@@ -93,30 +95,62 @@ function restartGame(){
   render();
 }
 
-// --- SimplePeer signaling ---
+// --- P2P setup with compressed short URL ---
 let player="X", opponent="O";
-const initiator = confirm("Are you the first player? OK = yes, Cancel = second player");
+const params = new URLSearchParams(location.search);
+const offerParam = params.get('offer');
+const initiator = !offerParam; // first player if no offer
 
-const peer = new SimplePeer({ initiator, trickle: false });
+async function shortenURL(longURL){
+  const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longURL)}`);
+  return await res.text();
+}
 
-peer.on('signal', data => {
-  const json = JSON.stringify(data);
+const peer = new SimplePeer({initiator, trickle:false});
 
+// Initiator (first player)
+peer.on('signal', async data=>{
   if(initiator){
-    const answer = prompt("Send this OFFER to your opponent, then paste their ANSWER here:", json);
-    if(answer) peer.signal(JSON.parse(answer));
-  } else {
-    prompt("Paste this ANSWER back to the first player:", json);
+    const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(data));
+    const longURL = location.origin + location.pathname + "?offer=" + compressed;
+    const shortLink = await shortenURL(longURL);
+
+    const infoDiv = document.getElementById("info");
+    infoDiv.innerHTML = `Share this short link with your opponent:<br>
+                         <input type="text" id="shortLink" value="${shortLink}" readonly>
+                         <button id="copyBtn">Copy</button>`;
+
+    document.getElementById("copyBtn").onclick = () => {
+      const input = document.getElementById("shortLink");
+      input.select();
+      document.execCommand("copy");
+      alert("Link copied! Now you can wait for the opponent's answer.");
+
+      // Prompt for compressed answer from Player B
+      const answer = prompt("Paste the ANSWER from the second player here:");
+      if(answer){
+        const decompressed = JSON.parse(LZString.decompressFromEncodedURIComponent(answer));
+        peer.signal(decompressed);
+      }
+    };
   }
 });
 
-if(!initiator){
-  const offer = prompt("Paste the OFFER from the first player here:");
-  peer.signal(JSON.parse(offer));
+// Second player
+if(!initiator && offerParam){
+  const offerData = JSON.parse(LZString.decompressFromEncodedURIComponent(offerParam));
+  peer.signal(offerData);
+  player="O"; opponent="X";
+
+  // Generate compressed answer to send back
+  peer.on('signal', answerData=>{
+    const compressedAnswer = LZString.compressToEncodedURIComponent(JSON.stringify(answerData));
+    prompt("Send this ANSWER back to the first player:\n\n", compressedAnswer);
+  });
 }
 
 peer.on('connect', ()=>{
-  console.log("Connected to peer");
+  console.log("P2P connected");
   render();
 });
 
