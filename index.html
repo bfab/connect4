@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Connect Four P2P (SimplePeer)</title>
+<style>
+body{font-family:sans-serif;text-align:center}
+#board{display:grid;grid-template-columns:repeat(7,60px);gap:5px;margin:20px auto}
+.cell{width:60px;height:60px;border-radius:50%;border:2px solid #333;background:#eee;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.X{background:red}.O{background:yellow}
+#info{margin:10px;font-weight:bold}
+button{padding:5px 10px;margin:5px;cursor:pointer}
+</style>
+</head>
+<body>
+<h1>Connect Four (P2P)</h1>
+<p id="info"></p>
+<div id="board"></div>
+<button onclick="restartGame()">🔄 Restart Game</button>
+
+<script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+<script>
+const ROWS=6,COLS=7;
+let state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
+const boardDiv=document.getElementById("board");
+
+for(let r=0;r<ROWS;r++){
+  for(let c=0;c<COLS;c++){
+    const cell=document.createElement("div");
+    cell.className="cell";
+    cell.dataset.row=r;
+    cell.dataset.col=c;
+    cell.onclick=()=>dropCoin(c);
+    boardDiv.appendChild(cell);
+  }
+}
+
+function render(){
+  document.querySelectorAll(".cell").forEach(cell=>{
+    const r=+cell.dataset.row, c=+cell.dataset.col;
+    cell.className="cell "+(state.board[r][c]||"");
+  });
+  const info=document.getElementById("info");
+  if(state.winner){
+    info.textContent=state.winner==="draw"?"Draw!":state.winner+" wins!";
+  } else {
+    info.textContent=`Turn: ${state.turn} | You are ${player}`;
+  }
+}
+
+function dropCoin(col){
+  if(state.winner || state.turn !== player) return;
+  for(let r=ROWS-1;r>=0;r--){
+    if(!state.board[r][col]){
+      state.board[r][col]=player;
+      checkWin(r,col);
+      state.turn=opponent;
+      sendState();
+      render();
+      return;
+    }
+  }
+}
+
+function checkWin(row,col){
+  const p=state.board[row][col];
+  if(!p) return;
+  const dirs=[[0,1],[1,0],[1,1],[1,-1]];
+  for(let [dr,dc] of dirs){
+    let count=1;
+    for(let k=1;k<4;k++){
+      const r=row+dr*k, c=col+dc*k;
+      if(r>=0 && r<ROWS && c>=0 && c<COLS && state.board[r][c]===p) count++;
+      else break;
+    }
+    for(let k=1;k<4;k++){
+      const r=row-dr*k, c=col-dc*k;
+      if(r>=0 && r<ROWS && c>=0 && c<COLS && state.board[r][c]===p) count++;
+      else break;
+    }
+    if(count>=4){ state.winner=p; return; }
+  }
+  if(state.board.every(r=>r.every(c=>c))) state.winner="draw";
+}
+
+function restartGame(){
+  state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
+  sendState();
+  render();
+}
+
+// --- SimplePeer signaling ---
+let player="X", opponent="O";
+const initiator = confirm("Are you the first player? OK = yes, Cancel = second player");
+
+const peer = new SimplePeer({ initiator, trickle: false });
+
+peer.on('signal', data => {
+  const json = JSON.stringify(data);
+  if(initiator){
+    const answer = prompt("Send this OFFER to your opponent, then paste their ANSWER here:", json);
+    if(answer) peer.signal(JSON.parse(answer));
+  } else {
+    prompt("Paste this ANSWER back to the first player:\n\n",json);
+  }
+});
+
+if(!initiator){
+  const offer = prompt("Paste the OFFER from the first player here:");
+  peer.signal(JSON.parse(offer));
+}
+
+peer.on('connect', ()=>console.log("Connected to peer"));
+peer.on('data', d=>{
+  state=JSON.parse(d);
+  player = state.turn;
+  opponent = player==="X"?"O":"X";
+  render();
+});
+
+function sendState(){
+  if(peer.connected) peer.send(JSON.stringify(state));
+}
+
+render();
+</script>
+</body>
+</html>
