@@ -2,13 +2,15 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Connect Four P2P (SimplePeer)</title>
+<title>Connect Four P2P</title>
 <style>
 body{font-family:sans-serif;text-align:center}
 #board{display:grid;grid-template-columns:repeat(7,60px);gap:5px;margin:20px auto}
 .cell{width:60px;height:60px;border-radius:50%;border:2px solid #333;background:#eee;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .X{background:red}.O{background:yellow}
 #info{margin:10px;font-weight:bold}
+.turn{font-weight:bold;font-size:1.2em}
+.turn.X{color:red}.turn.O{color:gold}
 button{padding:5px 10px;margin:5px;cursor:pointer}
 </style>
 </head>
@@ -42,9 +44,11 @@ function render(){
   });
   const info=document.getElementById("info");
   if(state.winner){
-    info.textContent=state.winner==="draw"?"Draw!":state.winner+" wins!";
+    info.innerHTML = state.winner==="draw" ? 
+      `<span class="turn">Draw!</span>` :
+      `<span class="turn ${state.winner}">${state.winner} wins!</span>`;
   } else {
-    info.textContent=`Turn: ${state.turn} | You are ${player}`;
+    info.innerHTML = `Turn: <span class="turn ${state.turn}">${state.turn}</span> | You are <span class="turn ${player}">${player}</span>`;
   }
 }
 
@@ -97,11 +101,12 @@ const peer = new SimplePeer({ initiator, trickle: false });
 
 peer.on('signal', data => {
   const json = JSON.stringify(data);
+
   if(initiator){
     const answer = prompt("Send this OFFER to your opponent, then paste their ANSWER here:", json);
     if(answer) peer.signal(JSON.parse(answer));
   } else {
-    prompt("Paste this ANSWER back to the first player:\n\n",json);
+    prompt("Paste this ANSWER back to the first player:", json);
   }
 });
 
@@ -110,7 +115,11 @@ if(!initiator){
   peer.signal(JSON.parse(offer));
 }
 
-peer.on('connect', ()=>console.log("Connected to peer"));
+peer.on('connect', ()=>{
+  console.log("Connected to peer");
+  render();
+});
+
 peer.on('data', d=>{
   state=JSON.parse(d);
   player = state.turn;
