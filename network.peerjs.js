@@ -9,7 +9,12 @@ export async function initNetwork(onData) {
   const isHost = !peerIdParam;
 
   // Create a PeerJS instance (random ID if host)
-  const peer = new Peer();
+  const peer = new Peer({
+	config: {'iceServers': [
+	  { url: 'stun:stun.l.google.com:19302' },
+	  { url: 'turn:homeo@turn.bistri.com:80', credential: 'homeo' }
+	]} /* Sample servers, please use appropriate ones */
+  });
 
   let conn;
   let readyResolve;
