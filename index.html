@@ -16,18 +16,21 @@
   </style>
 
   <!-- libraries required by simplepeer-based implementation -->
-  <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
-  
+  <!-- <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script> -->
+
+  <!-- libraries required by peerjs-based implementation -->
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
 </head>
 <body>
   <h1>Connect Four (Pluggable P2P)</h1>
   <p id="info"></p>
   <div id="board"></div>
-  <button onclick="restartGame()">🔄 Restart Game</button>
+  <button id="restartBtn">🔄 Restart Game</button>
   
   <script type="module">
-    import { initNetwork } from "./network.simplepeer.js";
+    import { initNetwork } from "./network.peerjs.js";
 
     const ROWS=6, COLS=7;
     let state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
@@ -95,6 +98,7 @@
       if(state.board.every(r=>r.every(c=>c))) state.winner="draw";
     }
 
+    document.getElementById("restartBtn").addEventListener("click", restartGame);
     function restartGame(){
       state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
       net.send(state);
