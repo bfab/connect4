@@ -1,171 +1,122 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Connect Four P2P Short URL + Prompt</title>
-<style>
-body{font-family:sans-serif;text-align:center}
-#board{display:grid;grid-template-columns:repeat(7,60px);gap:5px;margin:20px auto}
-.cell{width:60px;height:60px;border-radius:50%;border:2px solid #333;background:#eee;display:flex;align-items:center;justify-content:center;cursor:pointer}
-.X{background:red}.O{background:yellow}
-#info{margin:10px;font-weight:bold}
-.turn{font-weight:bold;font-size:1.2em}
-.turn.X{color:red}.turn.O{color:gold}
-button{padding:5px 10px;margin:5px;cursor:pointer}
-input#shortLink{width:80%;padding:5px;margin-top:5px;}
-</style>
+  <meta charset="UTF-8">
+  <title>Connect Four P2P (Pluggable Backend)</title>
+  <style>
+    body{font-family:sans-serif;text-align:center}
+    #board{display:grid;grid-template-columns:repeat(7,60px);gap:5px;margin:20px auto}
+    .cell{width:60px;height:60px;border-radius:50%;border:2px solid #333;background:#eee;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .X{background:red}.O{background:yellow}
+    #info{margin:10px;font-weight:bold}
+    .turn{font-weight:bold;font-size:1.2em}
+    .turn.X{color:red}.turn.O{color:gold}
+    button{padding:5px 10px;margin:5px;cursor:pointer}
+    input#shortLink{width:80%;padding:5px;margin-top:5px;}
+  </style>
+
+  <!-- libraries required by simplepeer-based implementation -->
+  <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+  
 </head>
 <body>
-<h1>Connect Four (Serverless, Short URL)</h1>
-<p id="info"></p>
-<div id="board"></div>
-<button onclick="restartGame()">🔄 Restart Game</button>
+  <h1>Connect Four (Pluggable P2P)</h1>
+  <p id="info"></p>
+  <div id="board"></div>
+  <button onclick="restartGame()">🔄 Restart Game</button>
+  
+  <script type="module">
+    import { initNetwork } from "./network.simplepeer.js";
 
-<script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    const ROWS=6, COLS=7;
+    let state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
+    let player="X", opponent="O";
 
-<script>
-const ROWS=6,COLS=7;
-let state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
-const boardDiv=document.getElementById("board");
-for(let r=0;r<ROWS;r++){
-  for(let c=0;c<COLS;c++){
-    const cell=document.createElement("div");
-    cell.className="cell";
-    cell.dataset.row=r;
-    cell.dataset.col=c;
-    cell.onclick=()=>dropCoin(c);
-    boardDiv.appendChild(cell);
-  }
-}
-
-function render(){
-  document.querySelectorAll(".cell").forEach(cell=>{
-    const r=+cell.dataset.row, c=+cell.dataset.col;
-    cell.className="cell "+(state.board[r][c]||"");
-  });
-  const info=document.getElementById("info");
-  if(state.winner){
-    info.innerHTML = state.winner==="draw" ? 
-      `<span class="turn">Draw!</span>` :
-      `<span class="turn ${state.winner}">${state.winner} wins!</span>`;
-  } else {
-    info.innerHTML = `Turn: <span class="turn ${state.turn}">${state.turn}</span> | You are <span class="turn ${player}">${player}</span>`;
-  }
-}
-
-function dropCoin(col){
-  if(state.winner || state.turn !== player) return;
-  for(let r=ROWS-1;r>=0;r--){
-    if(!state.board[r][col]){
-      state.board[r][col]=player;
-      checkWin(r,col);
-      state.turn=opponent;
-      sendState();
-      render();
-      return;
-    }
-  }
-}
-
-function checkWin(row,col){
-  const p=state.board[row][col];
-  if(!p) return;
-  const dirs=[[0,1],[1,0],[1,1],[1,-1]];
-  for(let [dr,dc] of dirs){
-    let count=1;
-    for(let k=1;k<4;k++){
-      const r=row+dr*k, c=col+dc*k;
-      if(r>=0 && r<ROWS && c>=0 && c<COLS && state.board[r][c]===p) count++;
-      else break;
-    }
-    for(let k=1;k<4;k++){
-      const r=row-dr*k, c=col-dc*k;
-      if(r>=0 && r<ROWS && c>=0 && c<COLS && state.board[r][c]===p) count++;
-      else break;
-    }
-    if(count>=4){ state.winner=p; return; }
-  }
-  if(state.board.every(r=>r.every(c=>c))) state.winner="draw";
-}
-
-function restartGame(){
-  state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
-  sendState();
-  render();
-}
-
-// --- P2P setup with compressed short URL ---
-let player="X", opponent="O";
-const params = new URLSearchParams(location.search);
-const offerParam = params.get('offer');
-const initiator = !offerParam; // first player if no offer
-
-async function shortenURL(longURL){
-  const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longURL)}`);
-  return await res.text();
-}
-
-const peer = new SimplePeer({initiator, trickle:false});
-
-// Initiator (first player)
-peer.on('signal', async data=>{
-  if(initiator){
-    const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(data));
-    const longURL = location.origin + location.pathname + "?offer=" + compressed;
-    const shortLink = await shortenURL(longURL);
-
-    const infoDiv = document.getElementById("info");
-    infoDiv.innerHTML = `Share this short link with your opponent:<br>
-                         <input type="text" id="shortLink" value="${shortLink}" readonly>
-                         <button id="copyBtn">Copy</button>`;
-
-    document.getElementById("copyBtn").onclick = () => {
-      const input = document.getElementById("shortLink");
-      input.select();
-      document.execCommand("copy");
-      alert("Link copied! Now you can wait for the opponent's answer.");
-
-      // Prompt for compressed answer from Player B
-      const answer = prompt("Paste the ANSWER from the second player here:");
-      if(answer){
-        const decompressed = JSON.parse(LZString.decompressFromEncodedURIComponent(answer));
-        peer.signal(decompressed);
+    const boardDiv=document.getElementById("board");
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        const cell=document.createElement("div");
+        cell.className="cell";
+        cell.dataset.row=r;
+        cell.dataset.col=c;
+        cell.onclick=()=>dropCoin(c);
+        boardDiv.appendChild(cell);
       }
-    };
-  }
-});
+    }
 
-// Second player
-if(!initiator && offerParam){
-  const offerData = JSON.parse(LZString.decompressFromEncodedURIComponent(offerParam));
-  peer.signal(offerData);
-  player="O"; opponent="X";
+    function render(){
+      document.querySelectorAll(".cell").forEach(cell=>{
+        const r=+cell.dataset.row, c=+cell.dataset.col;
+        cell.className="cell "+(state.board[r][c]||"");
+      });
+      const info=document.getElementById("info");
+      if(state.winner){
+        info.innerHTML = state.winner==="draw" ? 
+          `<span class="turn">Draw!</span>` :
+          `<span class="turn ${state.winner}">${state.winner} wins!</span>`;
+      } else {
+        info.innerHTML = `Turn: <span class="turn ${state.turn}">${state.turn}</span> | You are <span class="turn ${player}">${player}</span>`;
+      }
+    }
 
-  // Generate compressed answer to send back
-  peer.on('signal', answerData=>{
-    const compressedAnswer = LZString.compressToEncodedURIComponent(JSON.stringify(answerData));
-    prompt("Send this ANSWER back to the first player:\n\n", compressedAnswer);
-  });
-}
+    function dropCoin(col){
+      if(state.winner || state.turn !== player) return;
+      for(let r=ROWS-1;r>=0;r--){
+        if(!state.board[r][col]){
+          state.board[r][col]=player;
+          checkWin(r,col);
+          state.turn=opponent;
+          net.send(state);
+          render();
+          return;
+        }
+      }
+    }
 
-peer.on('connect', ()=>{
-  console.log("P2P connected");
-  render();
-});
+    function checkWin(row,col){
+      const p=state.board[row][col];
+      if(!p) return;
+      const dirs=[[0,1],[1,0],[1,1],[1,-1]];
+      for(let [dr,dc] of dirs){
+        let count=1;
+        for(let k=1;k<4;k++){
+          const r=row+dr*k, c=col+dc*k;
+          if(r>=0 && r<ROWS && c>=0 && c<COLS && state.board[r][c]===p) count++;
+          else break;
+        }
+        for(let k=1;k<4;k++){
+          const r=row-dr*k, c=col-dc*k;
+          if(r>=0 && r<ROWS && c>=0 && c<COLS && state.board[r][c]===p) count++;
+          else break;
+        }
+        if(count>=4){ state.winner=p; return; }
+      }
+      if(state.board.every(r=>r.every(c=>c))) state.winner="draw";
+    }
 
-peer.on('data', d=>{
-  state=JSON.parse(d);
-  player = state.turn;
-  opponent = player==="X"?"O":"X";
-  render();
-});
+    function restartGame(){
+      state={board:Array.from({length:ROWS},()=>Array(COLS).fill("")), turn:"X", winner:""};
+      net.send(state);
+      render();
+    }
 
-function sendState(){
-  if(peer.connected) peer.send(JSON.stringify(state));
-}
+    // --- Networking ---
+    let net;
+    (async () => {
+      net = await initNetwork((remoteState) => {
+        state = remoteState;
+        player = state.turn;
+        opponent = player==="X"?"O":"X";
+        render();
+      });
 
-render();
-</script>
+      await net.ready;
+      console.log("Connected. Host?", net.isHost);
+      render();
+    })();
+
+    render();
+  </script>
 </body>
 </html>
