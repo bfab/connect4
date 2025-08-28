@@ -15,6 +15,8 @@
     input#shortLink{width:80%;padding:5px;margin-top:5px;}
   </style>
 
+  <script src="aes256.js"></script>
+
   <!-- libraries required by simplepeer-based implementation -->
   <!-- <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script> -->
@@ -107,11 +109,41 @@
 
     // --- Networking ---
     let net;
-    (async () => {
-      net = await initNetwork((remoteState) => {
+
+    const callback = (remoteState) => {
         state = remoteState;
         render();
-      });
+      }
+
+    async function decryptPeerJSParams() {
+        let password = localStorage.getItem('connectionPassword') || '';
+        while (!password) {
+          password = window.prompt('Enter connection password');
+          if (password) {
+            try { localStorage.setItem('connectionPassword', password); } catch(e) {}
+          }
+        }
+        const encryptedParams = "vT1pj4qkrnbYGkPubQWUKw==:jJL6kpVth+MREsb2:0G/DbX3eIMU5Q6vSvR6Ax2DmP/CPcPiXkQmgjnj5oLLd54qFaxQo+Lkz";
+        
+        try {
+            const configParamsString = await AES256.decrypt(password, encryptedParams);
+            return getPeerJSParamsFromString(configParamsString);
+        } catch (err) {
+            localStorage.removeItem('connectionPassword');
+            alert("Error decrypting peerjs params; ensure you have the correct password.");
+            return null;
+        }
+    }
+
+    function getPeerJSParamsFromString(configParamsString) {
+        const [ hostAndPort, path ] = configParamsString.split("/");
+        const [ host, port ] = hostAndPort.split(":");
+        return { host, port, path }
+    }
+
+    (async () => {
+      const peerServerConfig = await decryptPeerJSParams();
+      net = await initNetwork(callback, peerServerConfig);
 
       await net.ready;
       player = net.isHost ? "Red" : "Yellow";

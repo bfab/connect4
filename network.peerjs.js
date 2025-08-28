@@ -3,18 +3,13 @@
  * @param {function(Object):void} onData - callback when remote data received
  * @returns {Promise<{send: Function, isHost: boolean, ready: Promise}>}
  */
-export async function initNetwork(onData) {
+export async function initNetwork(onData, peerConfig) {
   const params = new URLSearchParams(location.search);
   const peerIdParam = params.get("peer");
   const isHost = !peerIdParam;
 
   // Create a PeerJS instance (random ID if host)
-  const peer = new Peer({
-	config: {'iceServers': [
-	  { url: 'stun:stun.l.google.com:19302' },
-	  { url: 'turn:homeo@turn.bistri.com:80', credential: 'homeo' }
-	]} /* Sample servers, please use appropriate ones */
-  });
+  const peer = new Peer(undefined, peerConfig);
 
   let conn;
   let readyResolve;
